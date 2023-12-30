@@ -1,4 +1,4 @@
-# tmuxr - a tmux session management tool
+# Tmuxr - Tmux Session Management Script
 
 ## Overview
 
@@ -30,7 +30,7 @@ Tmuxr is designed to simplify the management of your Tmux sessions, making it id
 
 ## Contributions
 
-Contributions to Tmuxr are welcome! If you encounter any issues, have feature requests, or want to contribute to the project, please [submit an issue](https://github.com/yourusername/tmuxr/issues) or create a pull request.
+Contributions to Tmuxr are welcome! If you encounter any issues, have feature requests, or want to contribute to the project, please [submit an issue](https://github.com/uberoptix/tmuxr/issues) or create a pull request.
 
 ## License
 
