@@ -1,4 +1,5 @@
-# Tmuxr - Tmux Session Management Tool
+# Tmuxr
+## Tmux Session Management Tool
 
 ## Overview
 
