@@ -1,4 +1,4 @@
-# Tmuxr - Tmux Session Management Script
+# Tmuxr - Tmux Session Management Tool
 
 ## Overview
 
