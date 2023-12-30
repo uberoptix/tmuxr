@@ -49,7 +49,10 @@ Now you can use the **tmuxr** command from any directory to run the script.
 
 ## Contributions
 
-Contributions to Tmuxr are welcome! If you encounter any issues, have feature requests, or want to contribute to the project, please [submit an issue](https://github.com/uberoptix/tmuxr/issues) or create a pull request.
+Contributions to TmuxR are welcome! If you encounter any issues, have feature requests, or want to contribute to the project, please [submit an issue](https://github.com/uberoptix/tmuxr/issues) or create a pull request.
+
+<a href="https://www.buymeacoffee.com/uberoptix" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+<br/>
 
 ## License
 
