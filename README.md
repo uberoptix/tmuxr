@@ -1,12 +1,16 @@
-# Tmuxr - a tmux session management tool
+# TmuxR - a Tmux session management tool
+
+![GitHub Logo](https://github.com/uberoptix/tmuxr/blob/main/images/tmuxr.png)
 
 ## Overview
 
-**Tmuxr** is a simple Bash script designed to simplify your Tmux session management experience using a Whiptail UI. With Tmuxr, you can effortlessly create, manage, and navigate between Tmux sessions with intuitive text-based menus.
+**TmuxR** is a simple Bash script designed to simplify your Tmux session management experience using a Whiptail UI. With Tmuxr, you can effortlessly create, manage, and navigate between Tmux sessions with intuitive text-based menus.
 
 ## Why Tmuxr?
 
 Terminal multiplexers like Tmux can be immensely useful in managing multiple sessions and processes within a single terminal window. They provide a flexible and efficient way to organize your workflow. However, one common challenge users face with terminal multiplexers is the need to memorize various commands and options to create, manage, and navigate between sessions. This is where Tmuxr comes into play. Tmuxr simplifies the entire process by providing an intuitive, text-based menu interface. Whether you're a seasoned Tmux user or just getting started, Tmuxr makes it easy to manage your Tmux sessions.
+
+![GitHub Logo](https://github.com/uberoptix/tmuxr/blob/main/images/screenshot001.png)
 
 ## Features
 
