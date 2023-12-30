@@ -4,6 +4,10 @@
 
 **Tmuxr** is a simple Bash script designed to simplify your Tmux session management experience using a Whiptail UI. With Tmuxr, you can effortlessly create, manage, and navigate between Tmux sessions with intuitive text-based menus.
 
+## Why Tmuxr?
+
+Terminal multiplexers like Tmux can be immensely useful in managing multiple sessions and processes within a single terminal window. They provide a flexible and efficient way to organize your workflow. However, one common challenge users face with terminal multiplexers is the need to memorize various commands and options to create, manage, and navigate between sessions. This is where Tmuxr comes into play. Tmuxr simplifies the entire process by providing an intuitive, text-based menu interface. Whether you're a seasoned Tmux user or just getting started, Tmuxr makes it easy to manage your Tmux sessions.
+
 ## Features
 
 - **Create Sessions:** Easily create new Tmux sessions on the fly with custom names.
@@ -26,13 +30,14 @@ Tmuxr is designed to simplify the management of your Tmux sessions, making it id
 
 ## Global Use (Optional)
 
-To make Tmuxr globally accessible from any directory, you can copy the script to a directory that's in your system's PATH. Here's how to do it:
+To make Tmuxr globally accessible from any directory, create a symbolic link (symlink) within your system's PATH (e.g., '/usr/local/bin').
 
-1. Navigate to the directory containing the "tmuxr.sh" script.
+1. Create a symlink; replace /path/to/tmuxr.sh with the actual path to your "tmuxr.sh" script):
 
-2. Copy the script to a directory in your PATH, such as `/usr/local/bin`:
    ```bash
-   sudo cp tmuxr.sh /usr/local/bin/tmuxr
+      sudo ln -s /path/to/tmuxr.sh /usr/local/bin/tmuxr
+
+Now you can use the **tmuxr** command from any directory to run the script.
 
 ## Prerequisites
 
