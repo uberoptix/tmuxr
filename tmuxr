@@ -35,11 +35,19 @@ list_sessions() {
     tmux list-sessions -F "#S" 2>/dev/null || true
 }
 
-# Show a "Detach: C-b d" hint in the session's status bar.
-set_detach_hint() {
+# Brand the session's status bar:
+#   left   — tmux's default status-left (session name etc.)
+#   centre — literal "tmuxr"
+#   right  — detach reminder
+# Overrides status-format[0], which displaces the default window list;
+# users still navigate windows via C-b w / C-b <number>.
+apply_status_bar() {
     local target=$1
     tmux set-option -t "$target" status-right-length 50 >/dev/null 2>&1 || true
-    tmux set-option -t "$target" status-right " Detach: C-b d " >/dev/null 2>&1 || true
+    tmux set-option -t "$target" status-right " To Detach: Ctrl-B, then D " >/dev/null 2>&1 || true
+    tmux set-option -t "$target" 'status-format[0]' \
+        '#[align=left]#{T:status-left}#[align=centre]tmuxr#[align=right]#{T:status-right}' \
+        >/dev/null 2>&1 || true
 }
 
 # Per tmux: session names cannot contain ':' or '.', and cannot be empty.
@@ -52,7 +60,9 @@ prompt_input() {
     # Echo the user's input on stdout; return non-zero on Cancel/Esc so
     # callers can distinguish "cancelled" from "submitted empty".
     local title=$1 prompt=$2 default=${3-}
-    whiptail --title "$title" --inputbox "$prompt" 10 60 "$default" 3>&1 1>&2 2>&3
+    whiptail --title "$title" \
+        --ok-button "OK" --cancel-button "Back" \
+        --inputbox "$prompt" 10 60 "$default" 3>&1 1>&2 2>&3
 }
 
 create_session() {
@@ -67,7 +77,7 @@ create_session() {
         return 1
     fi
     if tmux new-session -d -s "$name"; then
-        set_detach_hint "$name"
+        apply_status_bar "$name"
         printf '%s' "$name"
         return 0
     fi
@@ -81,6 +91,7 @@ manage_session() {
     # Trailing spaces on tags widen whiptail's tag column for readability.
     # The case below matches with wildcards so the padding is harmless.
     action=$(whiptail --title "Session: $target" \
+        --ok-button "Select" --cancel-button "Back" \
         --menu "Choose an action" 15 60 4 \
         "Attach    " "Attach to the session" \
         "Kill      " "Kill the session" \
@@ -89,7 +100,7 @@ manage_session() {
 
     case $action in
         Attach*)
-            set_detach_hint "$target"
+            apply_status_bar "$target"
             tmux attach-session -t "$target"
             ;;
         Kill*)
@@ -132,6 +143,7 @@ menu_loop() {
             fi
 
             choice=$(whiptail --title "tmuxr — Manage tmux Sessions" \
+                --ok-button "Select" --cancel-button "Exit" \
                 --menu "Choose a session or create a new one" 25 80 15 \
                 "${options[@]}" 3>&1 1>&2 2>&3) || return 0
             choice=${choice%"$PAD"}
