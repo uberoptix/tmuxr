@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# ANSI color codes
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# Function to check if a command is available
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Check if tmux is installed, if not, try to install it
+if ! command_exists tmux; then
+    echo -e "${RED}tmux is not installed. Attempting to install...${NC}"
+    if command_exists apt-get; then
+        sudo apt-get update && sudo apt-get install -y tmux
+    elif command_exists yum; then
+        sudo yum install -y tmux
+    elif command_exists brew; then
+        brew install tmux
+    else
+        echo -e "${RED}Unable to install tmux automatically. Please install it manually.${NC}"
+        exit 1
+    fi
+fi
+
+# Check if whiptail is installed
+if ! command_exists whiptail; then
+    echo -e "${RED}whiptail is not installed. This script requires whiptail to run.${NC}"
+    echo -e "${RED}Please install whiptail and try again.${NC}"
+    exit 1
+fi
+
+# Rest of the script remains the same
+while true; do
+    SESSIONS=$(tmux list-sessions -F "#S" 2>/dev/null)
+    MENU_OPTIONS=("NEW" "Create a new session")
+
+    if [ -z "$SESSIONS" ]; then
+        MENU_OPTIONS+=("NONE" "No sessions available")
+    else
+        while IFS= read -r session; do
+            MENU_OPTIONS+=("$session" "Select to manage")
+        done <<< "$SESSIONS"
+        MENU_OPTIONS+=("KILL_ALL" "Terminate all sessions")
+    fi
+
+    if [ -n "$PRESELECTED_SESSION" ]; then
+        CHOICE="$PRESELECTED_SESSION"
+        unset PRESELECTED_SESSION
+    else
+        CHOICE=$(whiptail --title "Tmuxer - Manage Tmux Sessions" --menu "Choose a session or create a new one" 25 80 15 \
+            "${MENU_OPTIONS[@]}" \
+            3>&1 1>&2 2>&3)
+    fi
+
+    exitstatus=$?
+
+    if [ $exitstatus = 0 ]; then
+        case $CHOICE in
+            NEW)
+                SESSION_NAME=$(whiptail --inputbox "Enter new session name" 10 60 3>&1 1>&2 2>&3)
+                if [ -n "$SESSION_NAME" ]; then
+                    tmux new-session -d -s "$SESSION_NAME" 2>/dev/null
+                    if [ $? -eq 0 ]; then
+                        PRESELECTED_SESSION="$SESSION_NAME"
+                        whiptail --msgbox "Session created successfully" 8 45
+                    else
+                        whiptail --msgbox "Failed to create session. Session name might already be in use or tmux server not running." 8 78
+                    fi
+                fi
+                ;;
+            NONE)
+                if whiptail --yesno "Do you want to create a new session?" 10 60; then
+                    SESSION_NAME=$(whiptail --inputbox "Enter new session name" 10 60 3>&1 1>&2 2>&3)
+                    if [ -n "$SESSION_NAME" ]; then
+                        tmux new-session -d -s "$SESSION_NAME" 2>/dev/null
+                        if [ $? -eq 0 ]; then
+                            PRESELECTED_SESSION="$SESSION_NAME"
+                            whiptail --msgbox "Session created successfully" 8 45
+                        else
+                            whiptail --msgbox "Failed to create session. Session name might already be in use or tmux server not running." 8 78
+                        fi
+                    fi
+                fi
+                ;;
+            KILL_ALL)
+                if whiptail --yesno "Are you sure you want to terminate all sessions?" 10 60; then
+                    tmux kill-server
+                fi
+                ;;
+            *)
+                if [ -z "$PRESELECTED_SESSION" ]; then
+                    ACTION=$(whiptail --title "Session Actions" --menu "Choose an action for session '$CHOICE'" 15 60 4 \
+                        "Attach" "Attach to the session" \
+                        "Kill" "Kill the session" \
+                        "Rename" "Rename the session" \
+                        3>&1 1>&2 2>&3)
+                else
+                    ACTION="Attach"
+                fi
+
+                case $ACTION in
+                    Attach)
+                        tmux attach-session -t "$CHOICE"
+                        ;;
+                    Kill)
+                        if whiptail --yesno "Are you sure you want to kill session '$CHOICE'?" 10 60; then
+                            tmux kill-session -t "$CHOICE"
+                        fi
+                        ;;
+                    Rename)
+                        NEW_NAME=$(whiptail --inputbox "Enter new session name" 10 60 3>&1 1>&2 2>&3)
+                        if [ -n "$NEW_NAME" ]; then
+                            tmux rename-session -t "$CHOICE" "$NEW_NAME"
+                        fi
+                        ;;
+                esac
+                PRESELECTED_SESSION="" # Reset preselected session variable
+                ;;
+        esac
+    else
+        break
+    fi
+done
