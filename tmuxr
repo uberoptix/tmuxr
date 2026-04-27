@@ -36,18 +36,19 @@ list_sessions() {
 }
 
 # Brand the session's status bar:
-#   left   — tmux's default status-left (session name etc.)
-#   centre — literal "tmuxr"
-#   right  — detach reminder
-# Overrides status-format[0], which displaces the default window list;
-# users still navigate windows via C-b w / C-b <number>.
+#   left  — "tmuxr" in white, followed by the session name in black
+#   right — detach reminder
+# We rely on the default status-format[0] (window list shown in the middle)
+# and just customise status-left/right.
 apply_status_bar() {
     local target=$1
+    tmux set-option -t "$target" status-left-length 30 >/dev/null 2>&1 || true
+    tmux set-option -t "$target" status-left ' #[fg=white]tmuxr #[fg=black]#S ' >/dev/null 2>&1 || true
     tmux set-option -t "$target" status-right-length 50 >/dev/null 2>&1 || true
-    tmux set-option -t "$target" status-right " To Detach: Ctrl-B, then D " >/dev/null 2>&1 || true
-    tmux set-option -t "$target" 'status-format[0]' \
-        '#[align=left]#{T:status-left}#[align=centre]tmuxr#[align=right]#{T:status-right}' \
-        >/dev/null 2>&1 || true
+    tmux set-option -t "$target" status-right ' To Detach: Ctrl-B, then D ' >/dev/null 2>&1 || true
+    # If a previous tmuxr version overrode status-format[0], unset it so
+    # the default (window list etc.) returns.
+    tmux set-option -ut "$target" 'status-format[0]' >/dev/null 2>&1 || true
 }
 
 # Per tmux: session names cannot contain ':' or '.', and cannot be empty.
