@@ -46,9 +46,12 @@ apply_status_bar() {
     tmux set-option -t "$target" status-left ' #[fg=white]tmuxr #[fg=black]#S ' >/dev/null 2>&1 || true
     tmux set-option -t "$target" status-right-length 50 >/dev/null 2>&1 || true
     tmux set-option -t "$target" status-right ' To Detach: Ctrl-B, then D ' >/dev/null 2>&1 || true
-    # If a previous tmuxr version overrode status-format[0], unset it so
-    # the default (window list etc.) returns.
-    tmux set-option -ut "$target" 'status-format[0]' >/dev/null 2>&1 || true
+    # status-format is a global option. If a previous tmuxr version
+    # set a session-scoped override on it, unset the WHOLE array so
+    # the session inherits the global default (which renders the
+    # window list and references status-left/right). Note: unsetting
+    # only [0] leaves the array stuck on an empty value.
+    tmux set-option -u -t "$target" status-format >/dev/null 2>&1 || true
 }
 
 # Per tmux: session names cannot contain ':' or '.', and cannot be empty.
