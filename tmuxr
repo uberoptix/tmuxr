@@ -118,18 +118,23 @@ menu_loop() {
             preselected=""
         else
             local sessions
-            local options=("NEW" "Create a new session")
+            # Append PAD trailing spaces to every tag so whiptail allocates
+            # a wider tag column. We strip exactly PAD spaces back off after
+            # selection, so user-provided session names round-trip cleanly.
+            local PAD="    "
+            local options=("NEW${PAD}" "Create a new session")
             sessions=$(list_sessions)
             if [[ -n "$sessions" ]]; then
                 while IFS= read -r s; do
-                    options+=("$s" "Select to manage")
+                    options+=("${s}${PAD}" "Select to manage")
                 done <<<"$sessions"
-                options+=("KILL_ALL" "Terminate all sessions")
+                options+=("KILL_ALL${PAD}" "Terminate all sessions")
             fi
 
             choice=$(whiptail --title "tmuxr — Manage tmux Sessions" \
                 --menu "Choose a session or create a new one" 25 80 15 \
                 "${options[@]}" 3>&1 1>&2 2>&3) || return 0
+            choice=${choice%"$PAD"}
         fi
 
         case $choice in
