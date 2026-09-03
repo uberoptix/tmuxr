@@ -36,16 +36,19 @@ list_sessions() {
 }
 
 # Brand the session's status bar:
-#   left  — "tmuxr" in white, followed by the session name in black
+#   left  — "tmuxr" in bold white, then the session name (needed to tell
+#           apart sessions whose window lists look identical, e.g. two
+#           Claude sessions both showing "0:claude*")
 #   right — detach reminder
 # We rely on the default status-format[0] (window list shown in the middle)
 # and just customise status-left/right.
 apply_status_bar() {
     local target=$1
-    tmux set-option -t "$target" status-left-length 30 >/dev/null 2>&1 || true
-    tmux set-option -t "$target" status-left ' #[fg=white]tmuxr #[fg=black]#S ' >/dev/null 2>&1 || true
+    tmux set-option -t "$target" status-style 'bg=#275e16,fg=#ffffff' >/dev/null 2>&1 || true
+    tmux set-option -t "$target" status-left-length 40 >/dev/null 2>&1 || true
+    tmux set-option -t "$target" status-left ' #[fg=#ffffff,bold]tmuxr#[default] #[fg=#a988f8][#S]#[default] ' >/dev/null 2>&1 || true
     tmux set-option -t "$target" status-right-length 50 >/dev/null 2>&1 || true
-    tmux set-option -t "$target" status-right ' To Detach: Ctrl-B, then D ' >/dev/null 2>&1 || true
+    tmux set-option -t "$target" status-right ' To Detach: #[fg=#d7d691]Ctrl-B, then D#[default] ' >/dev/null 2>&1 || true
     # status-format is a global option. If a previous tmuxr version
     # set a session-scoped override on it, unset the WHOLE array so
     # the session inherits the global default (which renders the
