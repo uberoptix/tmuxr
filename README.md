@@ -1,5 +1,7 @@
 # tmuxr
 
+![tmuxr](images/tmuxr.png)
+
 Interactive [`whiptail`](https://en.wikipedia.org/wiki/Newt_(programming_library)) menu for managing [`tmux`](https://github.com/tmux/tmux) sessions. List, create, attach, rename, and kill — all without remembering a single tmux command.
 
 ## Why
@@ -11,7 +13,7 @@ Interactive [`whiptail`](https://en.wikipedia.org/wiki/Newt_(programming_library
 `tmuxr` is a single Bash script. Drop it on your `$PATH`:
 
 ```sh
-git clone https://github.com/jjcsforwood/tmuxr.git
+git clone https://github.com/uberoptix/tmuxr.git
 sudo install -m 0755 tmuxr/tmuxr /usr/local/bin/tmuxr
 ```
 
@@ -55,6 +57,13 @@ Cancel/Esc anywhere returns up one level. From the top menu, Cancel exits.
 - Session names are validated against tmux's rules (no `:`, no `.`, non-empty).
 - Cancel and "submitted empty" are now distinguished — empty Enter is treated as "no name", Cancel returns up the menu.
 - `KILL_ALL` confirmation is required.
+
+## History
+
+`main` is the 2026 rewrite and the only maintained version. It is developed on
+James's VPS and pushed here. The original 2023 `tmuxr.sh` and its README are kept
+on the [`legacy-2023`](https://github.com/uberoptix/tmuxr/tree/legacy-2023) branch
+(tag `v2023-legacy`) for reference only.
 
 ## License
 
