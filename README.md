@@ -61,8 +61,9 @@ Cancel/Esc anywhere returns up one level. From the top menu, Cancel exits.
 ## History
 
 `main` is the 2026 rewrite and the only maintained version. It is developed on
-James's VPS and pushed here. The original 2023 `tmuxr.sh` and its README are kept
-on the [`legacy-2023`](https://github.com/uberoptix/tmuxr/tree/legacy-2023) branch
+James's VPS and pushed here. The original 2023 `tmuxr.sh` and its README are an
+ancestor of `main` and are also kept on the
+[`legacy-2023`](https://github.com/uberoptix/tmuxr/tree/legacy-2023) branch
 (tag `v2023-legacy`) for reference only.
 
 ## License
