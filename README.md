@@ -69,3 +69,17 @@ ancestor of `main` and are also kept on the
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Behaviour worth knowing
+
+- **Status bar.** Sessions tmuxr creates get a green status bar with the session name on the
+  left and a detach reminder on the right; they are tagged with the tmux user option `@tmuxr`,
+  and only tagged sessions are restyled again on attach. Sessions made by other tools, or styled
+  from your own `.tmux.conf`, are left alone. Set `TMUXR_NO_BRAND=1` to turn the styling off
+  entirely.
+- **Inside tmux.** Run from a tmux pane, "Attach" switches your client to the chosen session
+  (tmux refuses nested attaches) and tmuxr exits.
+- **Errors are shown.** Anything tmux refuses (a duplicate name on rename, a failed kill, a
+  refused attach) is shown in a dialog rather than silently repainted over.
+- **Small terminals.** Dialogs shrink to fit; below 40x10 tmuxr refuses to start rather than
+  drawing an invisible menu. It also refuses to run without an interactive terminal.

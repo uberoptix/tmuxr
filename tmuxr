@@ -7,6 +7,9 @@
 #   tmuxr -l|--list  print sessions and exit
 #   tmuxr -h|--help  show help
 #
+# Environment:
+#   TMUXR_NO_BRAND=1 never touch a session's status bar
+#
 set -u
 
 RED=$'\033[0;31m'
@@ -16,14 +19,18 @@ die()  { printf '%s%s%s\n' "$RED" "$*" "$NC" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
-    cat <<EOF
+    cat <<USAGE
 tmuxr — interactive tmux session manager
 
 Usage:
   tmuxr            launch the menu (default)
   tmuxr -l|--list  list current sessions and exit
   tmuxr -h|--help  show this help
-EOF
+
+Environment:
+  TMUXR_NO_BRAND=1 never restyle a session's status bar (only sessions tmuxr
+                   created are restyled anyway)
+USAGE
 }
 
 require_deps() {
@@ -31,30 +38,121 @@ require_deps() {
     have whiptail || die "whiptail is not installed (Debian/Ubuntu: apt-get install whiptail; Synology: install via Entware)."
 }
 
+# whiptail draws on the terminal and needs one (TX-008): without a tty or TERM it prints
+# an error to its stderr, which the fd swap in wt() would otherwise capture as an answer.
+require_terminal() {
+    [[ -t 0 && -t 2 && -n ${TERM-} ]] || die "tmuxr needs an interactive terminal (a tty on stdin/stderr and TERM set)."
+}
+
+# Terminal geometry into ROWS/COLS, so dialogs can be clamped to fit (TX-008): a fixed
+# 25x80 menu on a 10x40 phone screen drew nothing yet still accepted blind keystrokes.
+ROWS=24
+COLS=80
+term_size() {
+    local size
+    size=$(stty size 2>/dev/null </dev/tty) || size=""
+    ROWS=${size% *}
+    COLS=${size#* }
+    if ! [[ $ROWS =~ ^[0-9]+$ && $COLS =~ ^[0-9]+$ ]]; then
+        ROWS=$(tput lines 2>/dev/null || echo 24)
+        COLS=$(tput cols 2>/dev/null || echo 80)
+    fi
+    (( ROWS >= 10 && COLS >= 40 )) || die "Terminal too small for tmuxr (${COLS}x${ROWS}; it needs at least 40x10)."
+}
+
+# clamp VALUE MIN MAX
+clamp() {
+    local v=$1 lo=$2 hi=$3
+    (( v < lo )) && v=$lo
+    (( v > hi )) && v=$hi
+    printf '%s' "$v"
+}
+
+# Run whiptail with the fd swap (its dialog on the terminal, its answer captured in DLG)
+# and make the status honest (TX-008): 0 = OK, 1 = Cancel/Back/No; Esc counts as Cancel;
+# rc 255 with a message ("TERM environment variable needs set.", ...) ends the program
+# with that message instead of being mistaken for Cancel.
+DLG=""
+wt() {
+    local rc
+    DLG=$(whiptail "$@" 3>&1 1>&2 2>&3)
+    rc=$?
+    case $rc in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) [[ -n $DLG ]] && die "whiptail: $DLG"; return 1 ;;
+    esac
+}
+
+# Scratch file for tmux's stderr, so its messages can be shown instead of lost.
+TMUXR_ERR=$(mktemp "${TMPDIR:-/tmp}/tmuxr.XXXXXX") || die "cannot create a temporary file"
+trap 'rm -f "$TMUXR_ERR"' EXIT
+
+# Run a tmux command and show tmux's own error in a dialog when it fails (TX-005): before,
+# a refused attach, a duplicate rename or a failed kill were repainted over within
+# milliseconds and looked like success. Returns tmux's status.
+tmux_do() {
+    local rc err
+    tmux "$@" 2>"$TMUXR_ERR"
+    rc=$?
+    if (( rc != 0 )); then
+        err=$(<"$TMUXR_ERR")
+        msgbox "tmux: ${err:-command failed (exit $rc)}" 10 70
+    fi
+    return $rc
+}
+
 list_sessions() {
     tmux list-sessions -F "#S" 2>/dev/null || true
 }
 
-# Brand the session's status bar:
-#   left  — "tmuxr" in bold white, then the session name (needed to tell
-#           apart sessions whose window lists look identical, e.g. two
-#           Claude sessions both showing "0:claude*")
+# `set-option -t` takes a pane-style target, which tmux resolves as a pane, then a window
+# in the client's current session, then a session — so a session named like one of your
+# windows would get its namesake restyled instead (TX-006). Session ids ($N) are
+# unambiguous; look one up by exact name.
+session_id() {
+    tmux display-message -p -t "=$1:" '#{session_id}' 2>/dev/null
+}
+
+# Brand a session's status bar (by id):
+#   left  — "tmuxr" in bold white, then the session name (needed to tell apart sessions
+#           whose window lists look identical, e.g. two Claude sessions both showing
+#           "0:claude*")
 #   right — detach reminder
-# We rely on the default status-format[0] (window list shown in the middle)
-# and just customise status-left/right.
-apply_status_bar() {
-    local target=$1
-    tmux set-option -t "$target" status-style 'bg=#275e16,fg=#ffffff' >/dev/null 2>&1 || true
-    tmux set-option -t "$target" status-left-length 40 >/dev/null 2>&1 || true
-    tmux set-option -t "$target" status-left ' #[fg=#ffffff,bold]tmuxr#[default] #[fg=#a988f8][#S]#[default] ' >/dev/null 2>&1 || true
-    tmux set-option -t "$target" status-right-length 50 >/dev/null 2>&1 || true
-    tmux set-option -t "$target" status-right ' To Detach: #[fg=#d7d691]Ctrl-B, then D#[default] ' >/dev/null 2>&1 || true
-    # status-format is a global option. If a previous tmuxr version
-    # set a session-scoped override on it, unset the WHOLE array so
-    # the session inherits the global default (which renders the
-    # window list and references status-left/right). Note: unsetting
-    # only [0] leaves the array stuck on an empty value.
-    tmux set-option -u -t "$target" status-format >/dev/null 2>&1 || true
+# We rely on the default status-format[0] (window list shown in the middle) and just
+# customise status-left/right. Returns 1 if the session could not be addressed.
+style_session() {
+    local sid=$1
+    tmux set-option -t "$sid" status-style 'bg=#275e16,fg=#ffffff' 2>/dev/null || return 1
+    tmux set-option -t "$sid" status-left-length 40 2>/dev/null
+    tmux set-option -t "$sid" status-left ' #[fg=#ffffff,bold]tmuxr#[default] #[fg=#a988f8][#S]#[default] ' 2>/dev/null
+    tmux set-option -t "$sid" status-right-length 50 2>/dev/null
+    tmux set-option -t "$sid" status-right ' To Detach: #[fg=#d7d691]Ctrl-B, then D#[default] ' 2>/dev/null
+    # status-format is a session option with a global default (man tmux, "Available
+    # session options"). If an earlier tmuxr set a session-level override, unset the
+    # WHOLE array so the session inherits the global default again (which renders the
+    # window list and references status-left/right); unsetting only [0] leaves the
+    # array stuck on an empty value.
+    tmux set-option -u -t "$sid" status-format 2>/dev/null
+    return 0
+}
+
+# Only sessions tmuxr created carry the @tmuxr marker and get branded (TX-007): a session
+# made by another tool, or styled from the user's own .tmux.conf, keeps its status bar.
+brand_new_session() {
+    local sid=$1
+    [[ ${TMUXR_NO_BRAND-} == 1 ]] && return 0
+    tmux set-option -t "$sid" @tmuxr 1 2>/dev/null || return 1
+    style_session "$sid"
+}
+
+rebrand_on_attach() {
+    local name=$1 sid
+    [[ ${TMUXR_NO_BRAND-} == 1 ]] && return 0
+    sid=$(session_id "$name") || return 1
+    [[ -n $sid ]] || return 1
+    [[ $(tmux show-option -qv -t "$sid" @tmuxr 2>/dev/null) == 1 ]] || return 0
+    style_session "$sid"
 }
 
 # Per tmux: session names cannot contain ':' or '.', and cannot be empty. A leading
@@ -69,20 +167,21 @@ valid_name() {
 # into the captured variable and the user never saw it (TX-001).
 msgbox() {
     local text=$1 height=$2 width=$3
-    whiptail --msgbox -- "$text" "$height" "$width" 3>&1 1>&2 2>&3
+    wt --msgbox -- "$text" "$(clamp "$height" 7 "$((ROWS - 2))")" "$(clamp "$width" 30 "$((COLS - 2))")" || true
 }
 
 prompt_input() {
     # Echo the user's input on stdout; return non-zero on Cancel/Esc so
     # callers can distinguish "cancelled" from "submitted empty".
     local title=$1 prompt=$2 default=${3-}
-    whiptail --title "$title" \
+    wt --title "$title" \
         --ok-button "OK" --cancel-button "Back" \
-        --inputbox -- "$prompt" 10 60 "$default" 3>&1 1>&2 2>&3
+        --inputbox -- "$prompt" "$(clamp 10 8 "$((ROWS - 2))")" "$(clamp 60 30 "$((COLS - 2))")" "$default" || return 1
+    printf '%s' "$DLG"
 }
 
 create_session() {
-    local name
+    local name sid
     name=$(prompt_input "New session" "Enter new session name") || return 1
     if ! valid_name "$name"; then
         msgbox "Invalid name. Session names cannot be empty, start with '-', or contain ':' or '.'" 9 70
@@ -92,45 +191,52 @@ create_session() {
         msgbox "Session '$name' already exists." 8 60
         return 1
     fi
-    if tmux new-session -d -s "$name"; then
-        apply_status_bar "$name"
-        printf '%s' "$name"
-        return 0
+    if ! sid=$(tmux new-session -d -P -F '#{session_id}' -s "$name" 2>"$TMUXR_ERR"); then
+        msgbox "Failed to create session '$name': $(<"$TMUXR_ERR")" 10 70
+        return 1
     fi
-    msgbox "Failed to create session '$name'." 8 60
-    return 1
+    brand_new_session "$sid" || msgbox "Session '$name' was created, but its status bar could not be styled." 8 70
+    printf '%s' "$name"
+    return 0
 }
 
 manage_session() {
     local target=$1
-    local action
-    # Trailing spaces on tags widen whiptail's tag column for readability.
-    # The case below matches with wildcards so the padding is harmless.
-    action=$(whiptail --title "Session: $target" \
+    term_size
+    wt --title "Session: $target" \
         --ok-button "Select" --cancel-button "Back" \
-        --menu -- "Choose an action" 15 60 4 \
-        "Attach    " "Attach to the session" \
-        "Kill      " "Kill the session" \
-        "Rename    " "Rename the session" \
-        3>&1 1>&2 2>&3) || return 0
+        --menu -- "Choose an action" "$(clamp 15 10 "$((ROWS - 2))")" "$(clamp 60 40 "$((COLS - 2))")" 3 \
+        "Attach" "Attach to the session" \
+        "Kill"   "Kill the session" \
+        "Rename" "Rename the session" || return 0
 
-    case $action in
-        Attach*)
-            apply_status_bar "$target"
-            tmux attach-session -t "=$target"
-            ;;
-        Kill*)
-            if whiptail --yesno "Kill session '$target'?" 8 60; then
-                tmux kill-session -t "=$target"
+    case $DLG in
+        Attach)
+            rebrand_on_attach "$target" || true
+            if [[ -n ${TMUX-} ]]; then
+                # Inside tmux, attach-session is refused ("sessions should be nested with
+                # care"); switch this client to the session and leave the menu (TX-004).
+                tmux_do switch-client -t "=$target" && exit 0
+            else
+                tmux_do attach-session -t "=$target" || true
             fi
             ;;
-        Rename*)
+        Kill)
+            if wt --yesno -- "Kill session '$target'?" 8 60; then
+                tmux_do kill-session -t "=$target" || true
+            fi
+            ;;
+        Rename)
             local new
             new=$(prompt_input "Rename" "New name for '$target'" "$target") || return 0
-            if valid_name "$new"; then
-                tmux rename-session -t "=$target" "$new"
-            else
+            if ! valid_name "$new"; then
                 msgbox "Invalid name. Session names cannot be empty, start with '-', or contain ':' or '.'" 9 70
+            elif [[ $new == "$target" ]]; then
+                :
+            elif tmux has-session -t "=$new" 2>/dev/null; then
+                msgbox "Session '$new' already exists." 8 60
+            else
+                tmux_do rename-session -t "=$target" "$new" || true
             fi
             ;;
     esac
@@ -144,42 +250,48 @@ menu_loop() {
             choice=$preselected
             preselected=""
         else
-            local sessions
-            # Append PAD trailing spaces to every tag so whiptail allocates
-            # a wider tag column. We strip exactly PAD spaces back off after
-            # selection, so user-provided session names round-trip cleanly.
-            local PAD="    "
-            local options=("NEW${PAD}" "Create a new session")
+            # Menu tags are row numbers and map back through `keys`, so a session that
+            # happens to be called NEW or KILL_ALL is just a session (TX-003); the old
+            # trailing-space padding trick is gone with it.
+            local -a keys=() options=()
+            local i=0 s sessions
+            keys+=("NEW");                 options+=("$((++i))" "+ Create a new session")
             sessions=$(list_sessions)
             if [[ -n "$sessions" ]]; then
                 while IFS= read -r s; do
-                    options+=("${s}${PAD}" "Select to manage")
+                    keys+=("S:$s");        options+=("$((++i))" "$s")
                 done <<<"$sessions"
-                options+=("KILL_ALL${PAD}" "Terminate all sessions")
+                keys+=("KILL_ALL");        options+=("$((++i))" "! Terminate all sessions")
             fi
 
+            term_size
+            local h w lh
+            h=$(clamp 25 10 "$((ROWS - 2))")
+            w=$(clamp 80 40 "$((COLS - 2))")
+            lh=$(clamp "$i" 3 "$((h - 8))")
             # `--` ends option parsing so a session created elsewhere with a leading '-'
             # is listed instead of aborting the menu with "unknown option" (TX-002).
-            choice=$(whiptail --title "tmuxr — Manage tmux Sessions" \
+            wt --title "tmuxr — Manage tmux Sessions" \
                 --ok-button "Select" --cancel-button "Exit" \
-                --menu -- "Choose a session or create a new one" 25 80 15 \
-                "${options[@]}" 3>&1 1>&2 2>&3) || return 0
-            choice=${choice%"$PAD"}
+                --menu -- "Choose a session or create a new one" "$h" "$w" "$lh" \
+                "${options[@]}" || return 0
+            [[ $DLG =~ ^[0-9]+$ ]] || continue
+            choice=${keys[$((DLG - 1))]-}
         fi
 
         case $choice in
             NEW)
                 if name=$(create_session); then
-                    preselected=$name  # auto-attach on next iteration
+                    preselected="S:$name"  # auto-attach on next iteration
                 fi
                 ;;
             KILL_ALL)
-                if whiptail --yesno "Terminate ALL tmux sessions?" 8 60; then
-                    tmux kill-server 2>/dev/null || true
+                if wt --yesno -- "Terminate ALL tmux sessions?" 8 60; then
+                    tmux_do kill-server || true
                 fi
                 ;;
-            *)
-                manage_session "$choice"
+            S:*)
+                manage_session "${choice#S:}"
                 ;;
         esac
     done
@@ -193,6 +305,7 @@ main() {
         *  )       usage; exit 2 ;;
     esac
     require_deps
+    require_terminal
     menu_loop
 }
 
