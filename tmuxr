@@ -57,10 +57,19 @@ apply_status_bar() {
     tmux set-option -u -t "$target" status-format >/dev/null 2>&1 || true
 }
 
-# Per tmux: session names cannot contain ':' or '.', and cannot be empty.
+# Per tmux: session names cannot contain ':' or '.', and cannot be empty. A leading
+# '-' is refused too: whiptail and tmux would read such a name as an option (TX-002).
 valid_name() {
     local name=$1
-    [[ -n "$name" && "$name" != *:* && "$name" != *.* ]]
+    [[ -n "$name" && "$name" != *:* && "$name" != *.* && "$name" != -* ]]
+}
+
+# A message box drawn on the terminal even when the caller's stdout is being captured
+# (create_session runs inside $(...)); without the fd swap whiptail painted the dialog
+# into the captured variable and the user never saw it (TX-001).
+msgbox() {
+    local text=$1 height=$2 width=$3
+    whiptail --msgbox -- "$text" "$height" "$width" 3>&1 1>&2 2>&3
 }
 
 prompt_input() {
@@ -69,18 +78,18 @@ prompt_input() {
     local title=$1 prompt=$2 default=${3-}
     whiptail --title "$title" \
         --ok-button "OK" --cancel-button "Back" \
-        --inputbox "$prompt" 10 60 "$default" 3>&1 1>&2 2>&3
+        --inputbox -- "$prompt" 10 60 "$default" 3>&1 1>&2 2>&3
 }
 
 create_session() {
     local name
     name=$(prompt_input "New session" "Enter new session name") || return 1
     if ! valid_name "$name"; then
-        whiptail --msgbox "Invalid name. Session names cannot be empty or contain ':' or '.'" 9 70
+        msgbox "Invalid name. Session names cannot be empty, start with '-', or contain ':' or '.'" 9 70
         return 1
     fi
     if tmux has-session -t "=$name" 2>/dev/null; then
-        whiptail --msgbox "Session '$name' already exists." 8 60
+        msgbox "Session '$name' already exists." 8 60
         return 1
     fi
     if tmux new-session -d -s "$name"; then
@@ -88,7 +97,7 @@ create_session() {
         printf '%s' "$name"
         return 0
     fi
-    whiptail --msgbox "Failed to create session '$name'." 8 60
+    msgbox "Failed to create session '$name'." 8 60
     return 1
 }
 
@@ -99,7 +108,7 @@ manage_session() {
     # The case below matches with wildcards so the padding is harmless.
     action=$(whiptail --title "Session: $target" \
         --ok-button "Select" --cancel-button "Back" \
-        --menu "Choose an action" 15 60 4 \
+        --menu -- "Choose an action" 15 60 4 \
         "Attach    " "Attach to the session" \
         "Kill      " "Kill the session" \
         "Rename    " "Rename the session" \
@@ -108,20 +117,20 @@ manage_session() {
     case $action in
         Attach*)
             apply_status_bar "$target"
-            tmux attach-session -t "$target"
+            tmux attach-session -t "=$target"
             ;;
         Kill*)
             if whiptail --yesno "Kill session '$target'?" 8 60; then
-                tmux kill-session -t "$target"
+                tmux kill-session -t "=$target"
             fi
             ;;
         Rename*)
             local new
             new=$(prompt_input "Rename" "New name for '$target'" "$target") || return 0
             if valid_name "$new"; then
-                tmux rename-session -t "$target" "$new"
+                tmux rename-session -t "=$target" "$new"
             else
-                whiptail --msgbox "Invalid name." 8 40
+                msgbox "Invalid name. Session names cannot be empty, start with '-', or contain ':' or '.'" 9 70
             fi
             ;;
     esac
@@ -149,9 +158,11 @@ menu_loop() {
                 options+=("KILL_ALL${PAD}" "Terminate all sessions")
             fi
 
+            # `--` ends option parsing so a session created elsewhere with a leading '-'
+            # is listed instead of aborting the menu with "unknown option" (TX-002).
             choice=$(whiptail --title "tmuxr — Manage tmux Sessions" \
                 --ok-button "Select" --cancel-button "Exit" \
-                --menu "Choose a session or create a new one" 25 80 15 \
+                --menu -- "Choose a session or create a new one" 25 80 15 \
                 "${options[@]}" 3>&1 1>&2 2>&3) || return 0
             choice=${choice%"$PAD"}
         fi
